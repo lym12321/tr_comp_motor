@@ -46,7 +46,7 @@ static uint8_t id_trans(uint16_t x) {
     for(uint8_t i = 0; i < ID_COUNT; i++) if(ctrl_id_map[i] == x) return i;
     BSP_ASSERT(false); return 0;
 }
-static DJI* device_ptr[BSP_CAN_DEVICE_COUNT][DJI_MOTOR_LIMIT];
+static dji* device_ptr[BSP_CAN_DEVICE_COUNT][DJI_MOTOR_LIMIT];
 static uint8_t device_cnt[BSP_CAN_DEVICE_COUNT];
 static bool ctrl_id_used[BSP_CAN_DEVICE_COUNT][ID_COUNT + 1];
 static uint8_t can_tx_buf[BSP_CAN_DEVICE_COUNT][ID_COUNT + 1][8];
@@ -59,10 +59,10 @@ static float calc_delta(float full, float current, float target) {
     return dt;
 }
 
-DJI::DJI(const char *name, const model_e &model, const param_t &param) :
-DJI(name, model, param, model == GM6020 ? GM6020_DEFAULT_RATIO : model == M3508 ? M3508_DEFAULT_RATIO : M2006_DEFAULT_RATIO) {}
+dji::dji(const char *name, const model_e &model, const param_t &param) :
+dji(name, model, param, model == GM6020 ? GM6020_DEFAULT_RATIO : model == M3508 ? M3508_DEFAULT_RATIO : M2006_DEFAULT_RATIO) {}
 
-DJI::DJI(const char *name, const model_e &model, const param_t &param, float ratio) : ratio(ratio), model(model), param(param) {
+dji::dji(const char *name, const model_e &model, const param_t &param, float ratio) : ratio(ratio), model(model), param(param) {
     strcpy(this->name, name);
 
     switch (model) {
@@ -97,7 +97,7 @@ DJI::DJI(const char *name, const model_e &model, const param_t &param, float rat
     ctrl_id_used[param.port][id_trans(ctrl_id)] = true;
 }
 
-void DJI::update(float val) {
+void dji::update(float val) {
     if (!enabled) return;
     switch (model) {
         case GM6020: {
@@ -126,15 +126,15 @@ void DJI::update(float val) {
     can_tx_buf[param.port][cid][(mid - 1) << 1 | 1] = output & 0xff;
 }
 
-void DJI::clear() {
+void dji::clear() {
     update(0);
     memset(&feedback, 0, sizeof feedback);
 }
 
-void DJI::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len) {
+void dji::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len) {
     if (!device_cnt[device] or len != 8) return;
 
-    DJI *p = nullptr;
+    dji *p = nullptr;
     for(uint8_t i = 0; i < device_cnt[device]; i++) {
         if(device_ptr[device][i]->feedback_id == id) {
             p = device_ptr[device][i];
@@ -176,7 +176,7 @@ void DJI::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len
     fb.timestamp = bsp_time_get_ms();
 }
 
-void DJI::init() {
+void dji::init() {
     logger::info("motor '%s' inited", name);
     if (!inited) {
         xTaskCreate(

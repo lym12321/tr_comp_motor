@@ -25,10 +25,10 @@ namespace motor {
      *      Speed Unit: rpm
      */
 #define DJI_MOTOR_LIMIT 8
-    class DJI {
+    class dji {
     public:
-        DJI() = delete;
-        ~DJI() = default;
+        dji() = delete;
+        ~dji() = default;
 
         enum control_mode_e {
             VOLTAGE, CURRENT
@@ -63,8 +63,8 @@ namespace motor {
             uint32_t timestamp;
         };
 
-        DJI(const char *name, const model_e &model, const param_t &param);
-        DJI(const char *name, const model_e &model, const param_t &param, float ratio);
+        dji(const char *name, const model_e &model, const param_t &param);
+        dji(const char *name, const model_e &model, const param_t &param, float ratio);
 
         static void decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len);
 

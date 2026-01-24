@@ -10,10 +10,10 @@
 
 namespace motor {
 #define DM_MOTOR_LIMIT 4
-    class DM {
+    class dm {
     public:
-        DM() = delete;
-        ~DM() = default;
+        dm() = delete;
+        ~dm() = default;
 
         enum control_mode_e {
             MIT, POSITION_SPEED, SPEED
@@ -39,7 +39,7 @@ namespace motor {
             uint32_t timestamp;
         };
 
-        DM(const char *name, const param_t &param);
+        dm(const char *name, const param_t &param);
 
         static void decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len);
 

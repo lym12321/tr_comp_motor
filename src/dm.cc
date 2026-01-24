@@ -7,14 +7,14 @@
 
 using namespace motor;
 
-static DM* device_ptr[BSP_CAN_DEVICE_COUNT][DM_MOTOR_LIMIT];
+static dm* device_ptr[BSP_CAN_DEVICE_COUNT][DM_MOTOR_LIMIT];
 uint8_t device_cnt[BSP_CAN_DEVICE_COUNT];
 
 const uint8_t reset_cmd[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfb };
 const uint8_t enable_cmd[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfc };
 const uint8_t disable_cmd[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd };
 
-DM::DM(const char *name_, const param_t &param_) : param(param_) {
+dm::dm(const char *name_, const param_t &param_) : param(param_) {
     BSP_ASSERT(0 <= param_.port and param_.port < BSP_CAN_DEVICE_COUNT);
     strcpy(name, name_);
 
@@ -32,15 +32,15 @@ DM::DM(const char *name_, const param_t &param_) : param(param_) {
     device_ptr[param.port][device_cnt[param.port] ++] = this;
 }
 
-void DM::reset() const {
+void dm::reset() const {
     bsp_can_send(param.port, ctrl_id, reset_cmd, sizeof(reset_cmd));
 }
 
-void DM::enable() const {
+void dm::enable() const {
     bsp_can_send(param.port, ctrl_id, enable_cmd, sizeof(enable_cmd));
 }
 
-void DM::disable() const {
+void dm::disable() const {
     bsp_can_send(param.port, ctrl_id, disable_cmd, sizeof(disable_cmd));
 }
 
@@ -55,7 +55,7 @@ int float_to_uint(float x, float x_min, float x_max, int bits) {
 }
 
 // MIT Control
-void DM::control(float position, float speed, float Kp, float Kd, float torque) const {
+void dm::control(float position, float speed, float Kp, float Kd, float torque) const {
     BSP_ASSERT(param.mode == MIT);
     BSP_ASSERT(Kp == 0 or Kd != 0); // 根据 MIT 模式说明，若 Kp != 0 且 Kd == 0，会引起震荡。
 
@@ -85,7 +85,7 @@ void DM::control(float position, float speed, float Kp, float Kd, float torque) 
     bsp_can_send(param.port, ctrl_id, msg, sizeof msg);
 }
 
-void DM::control(float position, float speed) const {
+void dm::control(float position, float speed) const {
     BSP_ASSERT(param.mode == POSITION_SPEED);
     if (!enabled) return;
     position = std::clamp(position, -param.p_max, param.p_max);
@@ -95,7 +95,7 @@ void DM::control(float position, float speed) const {
     bsp_can_send(param.port, ctrl_id, reinterpret_cast<const uint8_t *>(f), sizeof f);
 }
 
-void DM::control(float speed) const {
+void dm::control(float speed) const {
     BSP_ASSERT(param.mode == SPEED);
     if (!enabled) return;
     speed = std::clamp(speed, -param.v_max, param.v_max);
@@ -103,10 +103,10 @@ void DM::control(float speed) const {
     bsp_can_send(param.port, ctrl_id, reinterpret_cast<uint8_t *>(&speed), sizeof speed);
 }
 
-void DM::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len) {
+void dm::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len) {
     if (!device_cnt[device]) return;
 
-    DM *p = nullptr;
+    dm *p = nullptr;
     for (uint8_t i = 0; i < device_cnt[device]; i++) {
         if (device_ptr[device][i]->feedback_id == id) {
             p = device_ptr[device][i];
@@ -135,7 +135,7 @@ void DM::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len)
     fb.temp_rotor = raw.temp_rotor;
 }
 
-void DM::init() {
+void dm::init() {
     logger::info("motor '%s' inited", name);
     bsp_can_set_callback(param.port, feedback_id, decoder);
 }
