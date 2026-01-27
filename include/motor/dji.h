@@ -8,6 +8,7 @@
 #include "bsp/can.h"
 
 namespace motor {
+#define DJI_MOTOR_LIMIT 8
     /*
      *  DJI Motor Driver
      *  GM6020:
@@ -23,8 +24,13 @@ namespace motor {
      *      CURRENT Range: -16384 ~ 16384 (-20A ~ 20A)
      *      Angle Range: 0 ~ 8191
      *      Speed Unit: rpm
+     *  M2006 (C610):
+     *      Feedback id: 0x201 - 0x208
+     *      Control id: 0x200/0x1FF (CURRENT)
+     *      CURRENT Range: -10000 ~ 10000 (-10A ~ 10A)
+     *      Angle Range: 0 ~ 8191
+     *      Speed Unit: rpm
      */
-#define DJI_MOTOR_LIMIT 8
     class dji {
     public:
         dji() = delete;
