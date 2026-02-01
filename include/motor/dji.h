@@ -50,6 +50,10 @@ namespace motor {
             control_mode_e mode;
         };
 
+        struct power_param_t {
+            float k0, k1, k2, a;
+        };
+
         struct feedback_t {
             // 电机原始反馈值
             struct {
@@ -66,11 +70,14 @@ namespace motor {
             float current;
             // 转矩 (Nm)
             float torque;
+            // 功率 (W)
+            float power;
             uint32_t timestamp;
         };
 
         dji(const char *name, const model_e &model, const param_t &param);
         dji(const char *name, const model_e &model, const param_t &param, float ratio);
+        dji(const char *name, const model_e &model, const param_t &param, float ratio, const power_param_t &power_param);
 
         static void decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len);
 
@@ -87,6 +94,7 @@ namespace motor {
         bool enabled = false;
         feedback_t feedback = feedback_t();
         uint16_t ctrl_id = 0, feedback_id = 0;
+        power_param_t power_param = power_param_t();
     private:
         model_e model {};
         param_t param {};

@@ -32,6 +32,22 @@ using namespace motor;
 #define M3508_CURRENT_LIMIT_REAL 20.f
 #define M2006_CURRENT_LIMIT_REAL 10.f
 
+// 电机功率默认拟合系数
+#define GM6020_DEFAULT_POWER_K_0 0.5807780373237382f
+#define GM6020_DEFAULT_POWER_K_1 0.000495794444214091f
+#define GM6020_DEFAULT_POWER_K_2 27.17379907809995f
+#define GM6020_DEFAULT_POWER_A 0.9334894382537696f
+
+#define M3508_DEFAULT_POWER_K_0 1.1532294690949845f
+#define M3508_DEFAULT_POWER_K_1 0.00003165414968530437f
+#define M3508_DEFAULT_POWER_K_2 683.7802569066574f
+#define M3508_DEFAULT_POWER_A 0.8267041157447231f
+
+#define M2006_DEFAULT_POWER_K_0 0.f
+#define M2006_DEFAULT_POWER_K_1 0.f
+#define M2006_DEFAULT_POWER_K_2 0.f
+#define M2006_DEFAULT_POWER_A 0.f
+
 const float fpi = M_PI;
 
 // FreeRTOS Task
@@ -62,7 +78,11 @@ static float calc_delta(float full, float current, float target) {
 dji::dji(const char *name, const model_e &model, const param_t &param) :
 dji(name, model, param, model == GM6020 ? GM6020_DEFAULT_RATIO : model == M3508 ? M3508_DEFAULT_RATIO : M2006_DEFAULT_RATIO) {}
 
-dji::dji(const char *name, const model_e &model, const param_t &param, float ratio) : ratio(ratio), model(model), param(param) {
+dji::dji(const char *name, const model_e &model, const param_t &param, float ratio) :
+dji(name, model, param, ratio, {.k0 = 0, .k1 = 0, .k2 = 0, .a = 0}) {}
+
+dji::dji(const char *name, const model_e &model, const param_t &param, float ratio, const power_param_t &power_param) : ratio(ratio), power_param(power_param), model(model), param(param) {
+    BSP_ASSERT(ratio > 0.f);
     strcpy(this->name, name);
 
     switch (model) {
@@ -109,16 +129,19 @@ void dji::update(float val) {
                 output = static_cast<int16_t>(
                     std::clamp(val, -GM6020_CURRENT_LIMIT, GM6020_CURRENT_LIMIT)
                 );
+            break;
         }
         case M3508: {
             output = static_cast<int16_t>(
                 std::clamp(val, -M3508_CURRENT_LIMIT, M3508_CURRENT_LIMIT)
             );
+            break;
         }
         case M2006: {
             output = static_cast<int16_t>(
                 std::clamp(val, -M2006_CURRENT_LIMIT, M2006_CURRENT_LIMIT)
             );
+            break;
         }
     }
     uint8_t cid = id_trans(ctrl_id), mid = param.id < 5 ? param.id : param.id - 4;
@@ -129,6 +152,11 @@ void dji::update(float val) {
 void dji::clear() {
     update(0);
     memset(&feedback, 0, sizeof feedback);
+}
+
+static float calc_power(float k0, float k1, float k2, float a, float torque, float omega) {
+    // torque: 减速箱前扭矩 (Nm) | omega: 减速箱前角速度 (rad/s)
+    return k0 * torque * omega + k1 * omega * omega + k2 * torque * torque + a;
 }
 
 void dji::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len) {
@@ -161,16 +189,27 @@ void dji::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len
     switch (p->model) {
         case GM6020:
             fb.current = static_cast<float>(fb.raw.current) / GM6020_CURRENT_LIMIT * GM6020_CURRENT_LIMIT_REAL;
-            fb.torque = fb.current * p->ratio * GM6020_TORQUE_CONSTANT;
+            fb.torque = fb.current * p->ratio / GM6020_DEFAULT_RATIO * GM6020_TORQUE_CONSTANT;
             break;
         case M3508:
             fb.current = static_cast<float>(fb.raw.current) / M3508_CURRENT_LIMIT * M3508_CURRENT_LIMIT_REAL;
-            fb.torque = fb.current * p->ratio * M3508_TORQUE_CONSTANT;
+            fb.torque = fb.current * p->ratio / M3508_DEFAULT_RATIO * M3508_TORQUE_CONSTANT;
             break;
         case M2006:
             fb.current = static_cast<float>(fb.raw.current) / M2006_CURRENT_LIMIT * M2006_CURRENT_LIMIT_REAL;
-            fb.torque = fb.current * p->ratio * M2006_TORQUE_CONSTANT;
+            fb.torque = fb.current * p->ratio / M2006_DEFAULT_RATIO * M2006_TORQUE_CONSTANT;
             break;
+    }
+    // power - W
+    if (p->power_param.a == 0) {
+        if (p->model == GM6020)
+            fb.power = calc_power(GM6020_DEFAULT_POWER_K_0, GM6020_DEFAULT_POWER_K_1, GM6020_DEFAULT_POWER_K_2, GM6020_DEFAULT_POWER_A, fb.torque / p->ratio, fb.speed * p->ratio);
+        if (p->model == M3508)
+            fb.power = calc_power(M3508_DEFAULT_POWER_K_0, M3508_DEFAULT_POWER_K_1, M3508_DEFAULT_POWER_K_2, M3508_DEFAULT_POWER_A, fb.torque / p->ratio, fb.speed * p->ratio);
+        if (p->model == M2006)
+            fb.power = calc_power(M2006_DEFAULT_POWER_K_0, M2006_DEFAULT_POWER_K_1, M2006_DEFAULT_POWER_K_2, M2006_DEFAULT_POWER_A, fb.torque / p->ratio, fb.speed * p->ratio);
+    } else {
+        fb.power = calc_power(p->power_param.k0, p->power_param.k1, p->power_param.k2, p->power_param.a, fb.torque / p->ratio, fb.speed * p->ratio);
     }
 
     fb.timestamp = bsp_time_get_ms();
