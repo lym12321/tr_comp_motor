@@ -8,6 +8,8 @@
 
 #include <cstring>
 
+#include "cmsis_os2.h"
+
 using namespace motor;
 
 #define TASK_STACK_SIZE 512
@@ -30,14 +32,6 @@ static gyj* device_ptr[BSP_CAN_DEVICE_COUNT][GYJ_MOTOR_LIMIT];
 static uint8_t device_cnt[BSP_CAN_DEVICE_COUNT];
 static bool ctrl_id_used[BSP_CAN_DEVICE_COUNT][ID_COUNT + 1];
 static uint8_t can_tx_buf[BSP_CAN_DEVICE_COUNT][ID_COUNT + 1][8];
-
-// 带过零的计算角度差，好用
-static float calc_delta(float full, float current, float target) {
-    float dt = target - current;
-    if(2 * dt >  full) dt -= full;
-    if(2 * dt < -full) dt += full;
-    return dt;
-}
 
 gyj::gyj(const char *name, const param_t &param, float ratio) : ratio(ratio), param(param) {
     strcpy(this->name, name);
@@ -109,7 +103,7 @@ void gyj::init() {
             "motor::gyj",
             TASK_STACK_SIZE,
             nullptr,
-            0,
+            osPriorityHigh,
             &task_handle
         );
         inited = true;

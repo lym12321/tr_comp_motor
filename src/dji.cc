@@ -9,6 +9,8 @@
 #include <cstring>
 #include <algorithm>
 
+#include "cmsis_os2.h"
+
 using namespace motor;
 
 #define TASK_STACK_SIZE 512
@@ -223,7 +225,7 @@ void dji::init() {
             "motor::dji",
             TASK_STACK_SIZE,
             nullptr,
-            0,
+            osPriorityHigh,
             &task_handle
         );
         inited = true;
