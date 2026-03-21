@@ -8,6 +8,7 @@
 
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 
 #include "cmsis_os2.h"
 

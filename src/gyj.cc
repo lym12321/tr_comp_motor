@@ -7,6 +7,7 @@
 #include "task.h"
 
 #include <cstring>
+#include <cmath>
 
 #include "cmsis_os2.h"
 
