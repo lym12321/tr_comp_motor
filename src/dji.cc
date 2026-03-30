@@ -172,7 +172,7 @@ void dji::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len
             break;
         }
     }
-    if(p == nullptr or !p->enabled) return;
+    if(p == nullptr) return;
 
     auto &fb = p->feedback;
 
