@@ -17,7 +17,7 @@ using namespace motor;
 #define TASK_STACK_SIZE 512
 
 // 电机默认减速比
-#define GM6020_DEFAULT_RATIO 1
+#define GM6020_DEFAULT_RATIO 1.f
 #define M3508_DEFAULT_RATIO (3591.f/187.f)
 #define M2006_DEFAULT_RATIO (36.f/1.f)
 
@@ -78,13 +78,13 @@ static float calc_delta(float full, float current, float target) {
     return dt;
 }
 
-dji::dji(const char *name, const model_e &model, const param_t &param) :
-dji(name, model, param, model == GM6020 ? GM6020_DEFAULT_RATIO : model == M3508 ? M3508_DEFAULT_RATIO : M2006_DEFAULT_RATIO) {}
+dji::dji(const char *name, const model_e &model, const param_t &param, const int &timeout_ms) :
+dji(name, model, param, model == GM6020 ? GM6020_DEFAULT_RATIO : model == M3508 ? M3508_DEFAULT_RATIO : M2006_DEFAULT_RATIO, timeout_ms) {}
 
-dji::dji(const char *name, const model_e &model, const param_t &param, float ratio) :
-dji(name, model, param, ratio, {.k0 = 0, .k1 = 0, .k2 = 0, .a = 0}) {}
+dji::dji(const char *name, const model_e &model, const param_t &param, float ratio, const int &timeout_ms) :
+dji(name, model, param, ratio, {.k0 = 0, .k1 = 0, .k2 = 0, .a = 0}, timeout_ms) {}
 
-dji::dji(const char *name, const model_e &model, const param_t &param, float ratio, const power_param_t &power_param) : ratio(ratio), power_param(power_param), model(model), param(param) {
+dji::dji(const char *name, const model_e &model, const param_t &param, float ratio, const power_param_t &power_param, const int &timeout_ms) : ratio(ratio), power_param(power_param), timeout_ms(timeout_ms), model(model), param(param) {
     BSP_ASSERT(ratio > 0.f);
     strcpy(this->name, name);
 
@@ -237,15 +237,24 @@ void dji::init() {
 
 static void task(void *args) {
     logger::info("module inited");
+    uint32_t lst_wkup = bsp_time_get_ms();
     for (;;) {
-        for(uint8_t i = 0; i < BSP_CAN_DEVICE_COUNT; i++) {
+        for (uint8_t i = 0; i < BSP_CAN_DEVICE_COUNT; i++) {
             if(!device_cnt[i]) continue;
-            for(uint8_t j = 0; j < ID_COUNT; j++) {
+            for (uint8_t j = 0; j < device_cnt[i]; j++) {
+                if (device_ptr[i][j]->timeout_ms == -1) continue;
+                const auto p = device_ptr[i][j];
+                if (const auto cur_ms = bsp_time_get_ms(); p->output != 0 and
+                    (cur_ms - p->feedback.timestamp > static_cast<uint32_t>(p->timeout_ms) or cur_ms - p->lst_update_time)) {
+                    p->update(0);
+                }
+            }
+            for (uint8_t j = 0; j < ID_COUNT; j++) {
                 if(ctrl_id_used[i][j]) {
                     bsp_can_send(static_cast<bsp_can_e>(i), ctrl_id_map[j], can_tx_buf[i][j], 8);
                 }
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelayUntil(&lst_wkup, pdMS_TO_TICKS(1));
     }
 }
