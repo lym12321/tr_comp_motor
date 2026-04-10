@@ -51,7 +51,7 @@ namespace motor {
         };
 
         struct power_param_t {
-            float k0, k1, k2, a;
+            float k0, k1, k2, k3, k4, k5;
         };
 
         struct feedback_t {
@@ -76,9 +76,10 @@ namespace motor {
         };
 
         // timeout_ms 默认为 -1, 即不设超时时间; 若不为 -1, 则在电机离线或 update 超时时, output 将被强制设为 0
-        dji(const char *name, const model_e &model, const param_t &param, const int &timeout_ms = -1);
-        dji(const char *name, const model_e &model, const param_t &param, float ratio, const int &timeout_ms = -1);
-        dji(const char *name, const model_e &model, const param_t &param, float ratio, const power_param_t &power_param, const int &timeout_ms = -1);
+        dji(const char *name, const model_e &model, const param_t &param);
+        dji(const char *name, const model_e &model, const param_t &param, int timeout_ms);
+        dji(const char *name, const model_e &model, const param_t &param, int timeout_ms, float ratio);
+        dji(const char *name, const model_e &model, const param_t &param, int timeout_ms, float ratio, const power_param_t &power_param);
 
         static void decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len);
 
@@ -87,8 +88,12 @@ namespace motor {
 
         void enable() { this->enabled = true; }
         void disable() { clear(); this->enabled = false; }
+
+        // 考虑到有电压控制 6020 的需求, 这里 update 的值是发给电机的原始值, 不会重新映射
         void update(float val);
-        // void update_torque(float torque);
+        // void update_torque(float val);
+
+        [[nodiscard]] float predict_power(float val) const;
 
         float ratio = 0;
         char name[16] = { };

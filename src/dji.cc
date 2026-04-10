@@ -35,21 +35,39 @@ using namespace motor;
 #define M3508_CURRENT_LIMIT_REAL 20.f
 #define M2006_CURRENT_LIMIT_REAL 10.f
 
+#define GM6020_TORQUE_LIMIT 1.2f
+#define M3508_TORQUE_LIMIT 3.f
+#define M2006_TORQUE_LIMIT 1.f
+
 // 电机功率默认拟合系数
-#define GM6020_DEFAULT_POWER_K_0 0.5807780373237382f
-#define GM6020_DEFAULT_POWER_K_1 0.000495794444214091f
-#define GM6020_DEFAULT_POWER_K_2 27.17379907809995f
-#define GM6020_DEFAULT_POWER_A 0.9334894382537696f
+// W = K0 + K1 * current + K2 * speed + K3 * current * speed + K4 * current * current + K5 * speed * speed)
 
-#define M3508_DEFAULT_POWER_K_0 1.1532294690949845f
-#define M3508_DEFAULT_POWER_K_1 0.00003165414968530437f
-#define M3508_DEFAULT_POWER_K_2 683.7802569066574f
-#define M3508_DEFAULT_POWER_A 0.8267041157447231f
+constexpr dji::power_param_t GM6020_DEFAULT_POWER_PARAM = {
+    .k0 = 0.7507578,
+    .k1 = -0.0759636,
+    .k2 = -0.00153397,
+    .k3 = 0.01225624,
+    .k4 = 0.19101805,
+    .k5 = 0.0000066450
+};
 
-#define M2006_DEFAULT_POWER_K_0 0.f
-#define M2006_DEFAULT_POWER_K_1 0.f
-#define M2006_DEFAULT_POWER_K_2 0.f
-#define M2006_DEFAULT_POWER_A 0.f
+constexpr dji::power_param_t M3508_DEFAULT_POWER_PARAM = {
+    .k0 = 0.65213,
+    .k1 = -0.15659,
+    .k2 = 0.00041660,
+    .k3 = 0.00235415,
+    .k4 = 0.20022,
+    .k5 = 1.08e-7
+};
+
+constexpr dji::power_param_t M2006_DEFAULT_POWER_PARAM = {
+    .k0 = 0,
+    .k1 = 0,
+    .k2 = 0,
+    .k3 = 0,
+    .k4 = 0,
+    .k5 = 0
+};
 
 const float fpi = M_PI;
 
@@ -78,13 +96,16 @@ static float calc_delta(float full, float current, float target) {
     return dt;
 }
 
-dji::dji(const char *name, const model_e &model, const param_t &param, const int &timeout_ms) :
-dji(name, model, param, model == GM6020 ? GM6020_DEFAULT_RATIO : model == M3508 ? M3508_DEFAULT_RATIO : M2006_DEFAULT_RATIO, timeout_ms) {}
+dji::dji(const char *name, const model_e &model, const param_t &param) :
+dji(name, model, param, -1) {}
 
-dji::dji(const char *name, const model_e &model, const param_t &param, float ratio, const int &timeout_ms) :
-dji(name, model, param, ratio, {.k0 = 0, .k1 = 0, .k2 = 0, .a = 0}, timeout_ms) {}
+dji::dji(const char *name, const model_e &model, const param_t &param, int timeout_ms) :
+dji(name, model, param, timeout_ms, model == GM6020 ? GM6020_DEFAULT_RATIO : model == M3508 ? M3508_DEFAULT_RATIO : M2006_DEFAULT_RATIO) {}
 
-dji::dji(const char *name, const model_e &model, const param_t &param, float ratio, const power_param_t &power_param, const int &timeout_ms) : ratio(ratio), power_param(power_param), timeout_ms(timeout_ms), model(model), param(param) {
+dji::dji(const char *name, const model_e &model, const param_t &param, int timeout_ms, float ratio) :
+dji(name, model, param, timeout_ms, ratio, model == GM6020 ? GM6020_DEFAULT_POWER_PARAM : model == M3508 ? M3508_DEFAULT_POWER_PARAM : M2006_DEFAULT_POWER_PARAM) {}
+
+dji::dji(const char *name, const model_e &model, const param_t &param, int timeout_ms, float ratio, const power_param_t &power_param) : ratio(ratio), power_param(power_param), timeout_ms(timeout_ms), model(model), param(param) {
     BSP_ASSERT(ratio > 0.f);
     strcpy(this->name, name);
 
@@ -152,14 +173,27 @@ void dji::update(float val) {
     can_tx_buf[param.port][cid][(mid - 1) << 1 | 1] = output & 0xff;
 }
 
+// void dji::update_torque(float val) {
+//     ;
+// }
+
 void dji::clear() {
     update(0);
     memset(&feedback, 0, sizeof feedback);
 }
 
-static float calc_power(float k0, float k1, float k2, float a, float torque, float omega) {
-    // torque: 减速箱前扭矩 (Nm) | omega: 减速箱前角速度 (rad/s)
-    return k0 * torque * omega + k1 * omega * omega + k2 * torque * torque + a;
+// speed 为 raw, 但 current 不是
+static float calc_power(float k0, float k1, float k2, float k3, float k4, float k5, float current, float speed) {
+    current = std::abs(current);
+    speed = std::abs(speed);
+    current /= 1000;
+    return k0 + k1 * current + k2 * speed + k3 * current * speed + k4 * current * current + k5 * speed * speed;
+}
+
+// 不妨考虑速度不突变, 假设控制量为 val, 估计功率
+float dji::predict_power(float val) const {
+    auto [k0, k1, k2, k3, k4, k5] = power_param;
+    return calc_power(k0, k1, k2, k3, k4, k5, val, feedback.raw.speed);
 }
 
 void dji::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len) {
@@ -204,17 +238,7 @@ void dji::decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len
             break;
     }
     // power - W
-    if (p->power_param.a == 0) {
-        if (p->model == GM6020)
-            fb.power = calc_power(GM6020_DEFAULT_POWER_K_0, GM6020_DEFAULT_POWER_K_1, GM6020_DEFAULT_POWER_K_2, GM6020_DEFAULT_POWER_A, fb.torque / p->ratio, fb.speed * p->ratio);
-        if (p->model == M3508)
-            fb.power = calc_power(M3508_DEFAULT_POWER_K_0, M3508_DEFAULT_POWER_K_1, M3508_DEFAULT_POWER_K_2, M3508_DEFAULT_POWER_A, fb.torque / p->ratio, fb.speed * p->ratio);
-        if (p->model == M2006)
-            fb.power = calc_power(M2006_DEFAULT_POWER_K_0, M2006_DEFAULT_POWER_K_1, M2006_DEFAULT_POWER_K_2, M2006_DEFAULT_POWER_A, fb.torque / p->ratio, fb.speed * p->ratio);
-    } else {
-        fb.power = calc_power(p->power_param.k0, p->power_param.k1, p->power_param.k2, p->power_param.a, fb.torque / p->ratio, fb.speed * p->ratio);
-    }
-
+    fb.power = p->predict_power(fb.raw.current);
     fb.timestamp = bsp_time_get_ms();
 }
 
