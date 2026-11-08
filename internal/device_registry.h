@@ -11,7 +11,7 @@ struct device_registry {
     T*     devices[BSP_CAN_DEVICE_COUNT][Limit] = {};
     uint8_t cnt[BSP_CAN_DEVICE_COUNT]           = {};
 
-    bool add(bsp_can_e port, T* dev) {
+    [[nodiscard]] bool add(bsp_can_e port, T* dev) {
         if (cnt[port] >= Limit) return false;
         devices[port][cnt[port]++] = dev;
         return true;

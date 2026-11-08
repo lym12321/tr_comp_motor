@@ -87,8 +87,8 @@ namespace motor {
         void init();
         void clear();
 
-        void enable() { this->enabled = true; }
-        void disable() { clear(); this->enabled = false; }
+        void enable();
+        void disable();
 
         // 考虑到有电压控制 6020 的需求, 这里 update 的值是发给电机的原始值, 不会重新映射
         void update(float val);

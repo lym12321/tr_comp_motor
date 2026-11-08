@@ -39,7 +39,7 @@ dm::dm(const char *name_, const param_t &param_) : param(param_) {
     }
 
     feedback_id = param_.master_id;
-    registry.add(param.port, this);
+    BSP_ASSERT(registry.add(param.port, this));
 }
 
 void dm::reset() const {
@@ -153,7 +153,7 @@ void dm::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len)
 }
 void dm::init() {
     logger::info("motor '%s' inited", name);
-    bsp_can_set_callback(param.port, feedback_id, decoder);
+    BSP_ASSERT(bsp_can_set_callback(param.port, feedback_id, decoder) == BSP_STATUS_OK);
 }
 
 dm::feedback_t dm::state() const {

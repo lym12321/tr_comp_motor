@@ -153,13 +153,12 @@ dji::dji(const char* name, const model_e& model, const param_t& param,
     }
     }
 
-    registry.add(param.port, this);
+    BSP_ASSERT(registry.add(param.port, this));
     ctrl_id_used[param.port][id_trans(ctrl_id)] = true;
 }
 
 
 void dji::update(float val) {
-    if (!enabled) return;
     // 控制链路的运行时异常不能让整机停在断言中，非有限输入按零输出处理。
     if (!std::isfinite(val)) val = 0.0f;
     int16_t next_output = 0;
@@ -185,10 +184,27 @@ void dji::update(float val) {
     const uint8_t cid = id_trans(ctrl_id);
     const uint8_t mid = param.id < 5 ? param.id : param.id - 4;
     const unsigned long state = bsp_sys_enter_critical();
+    if (!enabled) {
+        bsp_sys_exit_critical(state);
+        return;
+    }
     output = next_output;
     lst_update_time = bsp_time_get_ms();
     can_tx_buf[param.port][cid][(mid - 1) << 1]       = output >> 8;
     can_tx_buf[param.port][cid][((mid - 1) << 1) | 1] = output & 0xff;
+    bsp_sys_exit_critical(state);
+}
+
+void dji::enable() {
+    const unsigned long state = bsp_sys_enter_critical();
+    enabled = true;
+    bsp_sys_exit_critical(state);
+}
+
+void dji::disable() {
+    const unsigned long state = bsp_sys_enter_critical();
+    enabled = false;
+    clear();
     bsp_sys_exit_critical(state);
 }
 
@@ -297,7 +313,7 @@ void dji::init() {
         BSP_ASSERT(ok == pdPASS);
         inited = true;
     }
-    bsp_can_set_callback(param.port, feedback_id, decoder);
+    BSP_ASSERT(bsp_can_set_callback(param.port, feedback_id, decoder) == BSP_STATUS_OK);
     enable();
 }
 static void task(void* args) {

@@ -53,7 +53,7 @@ gyj::gyj(const char* name, const param_t& param, float ratio)
     ctrl_id     = param.id < 4 ? 0xaf : 0xae;
     feedback_id = 0xf0 + param.id;
 
-    registry.add(param.port, this);
+    BSP_ASSERT(registry.add(param.port, this));
     ctrl_id_used[param.port][id_trans(ctrl_id)] = true;
 }
 
@@ -143,7 +143,7 @@ void gyj::init() {
         BSP_ASSERT(ok == pdPASS);
         inited = true;
     }
-    bsp_can_set_callback(param.port, feedback_id, decoder);
+    BSP_ASSERT(bsp_can_set_callback(param.port, feedback_id, decoder) == BSP_STATUS_OK);
     enable();
 }
 
