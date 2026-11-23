@@ -42,16 +42,16 @@ dm::dm(const char *name_, const param_t &param_) : param(param_) {
     BSP_ASSERT(registry.add(param.port, this));
 }
 
-void dm::reset() const {
-    bsp_can_send(param.port, ctrl_id, reset_cmd, sizeof(reset_cmd));
+bsp_status_t dm::reset() const {
+    return bsp_can_send(param.port, ctrl_id, reset_cmd, sizeof(reset_cmd));
 }
 
-void dm::enable() const {
-    bsp_can_send(param.port, ctrl_id, enable_cmd, sizeof(enable_cmd));
+bsp_status_t dm::enable() const {
+    return bsp_can_send(param.port, ctrl_id, enable_cmd, sizeof(enable_cmd));
 }
 
-void dm::disable() const {
-    bsp_can_send(param.port, ctrl_id, disable_cmd, sizeof(disable_cmd));
+bsp_status_t dm::disable() const {
+    return bsp_can_send(param.port, ctrl_id, disable_cmd, sizeof(disable_cmd));
 }
 
 static float uint_to_float(int x_int, float x_min, float x_max, int bits) {
@@ -67,7 +67,6 @@ static int float_to_uint(float x, float x_min, float x_max, int bits) {
 // MIT Control
 void dm::control(float position, float speed, float Kp, float Kd, float torque) const {
     if (param.mode != MIT) { disable(); return; }
-    if (Kp != 0 && Kd == 0) { disable(); return; }
     if (!std::isfinite(position) || !std::isfinite(speed) || !std::isfinite(Kp) ||
         !std::isfinite(Kd) || !std::isfinite(torque)) {
         disable();
@@ -85,6 +84,7 @@ void dm::control(float position, float speed, float Kp, float Kd, float torque) 
              Kp_ = float_to_uint(Kp, 0, 500, 12),
              Kd_ = float_to_uint(Kd, 0, 5, 12),
              T_ff = float_to_uint(torque, -param.t_max, param.t_max, 12);
+    if (Kp_ != 0 && Kd_ == 0) { disable(); return; }
 
     uint8_t msg[8] = {};
     msg[0] = P_des >> 8;

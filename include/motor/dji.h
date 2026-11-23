@@ -85,9 +85,11 @@ namespace motor {
         static void decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len);
 
         void init();
+        // Explicitly reset output and feedback history, including accumulated rounds.
         void clear();
 
         void enable();
+        // Stop output without discarding measured feedback.
         void disable();
 
         // 考虑到有电压控制 6020 的需求, 这里 update 的值是发给电机的原始值, 不会重新映射
@@ -117,5 +119,6 @@ namespace motor {
         static constexpr float two_pi = 6.28318530717958647692f;
 
         void update_round(uint16_t raw_angle);
+        void clear_output();
     };
 }

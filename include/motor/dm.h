@@ -46,9 +46,9 @@ namespace motor {
         void init();
 
         // Base Control
-        void reset() const;
-        void enable() const;
-        void disable() const;
+        bsp_status_t reset() const;
+        bsp_status_t enable() const;
+        bsp_status_t disable() const;
         // MIT Control
         void control(float position, float speed, float Kp, float Kd, float torque) const;
         // Position Speed Control

@@ -38,9 +38,9 @@ namespace motor {
                 int16_t angle, speed, current;
                 uint8_t temp;
             } raw;
-            // 反馈的角度
+            // 反馈的单圈角度，单位沿用协议原始计数；协议单位尚未定义。
             float angle;
-            // 反馈的速度
+            // 反馈的速度，单位沿用协议原始计数；协议单位尚未定义。
             float speed;
             // 反馈的电流
             float current;
@@ -51,23 +51,28 @@ namespace motor {
 
         static void decoder(bsp_can_e device, uint32_t id, const uint8_t *data, size_t len);
 
-        void init();
+        // Register once. If the first mode frame fails, retry enable().
+        bsp_status_t init();
+        // Explicitly reset output and feedback history.
         void clear();
 
-        void set_mode(mode_e m, bool have_feedback, bool modified = true);
-        void enable() { set_mode(this->param.mode, this->param.have_feedback, false); this->enabled = true; }
-        void disable() { set_mode(DISABLE, false, false); clear(); this->enabled = false; }
+        bsp_status_t set_mode(mode_e m, bool have_feedback, bool modified = true);
+        bsp_status_t enable();
+        // Stop output without discarding measured feedback.
+        bsp_status_t disable();
         void update(float val);
         [[nodiscard]] feedback_t state() const;
 
         float ratio = 0;
         char name[16] = { };
-        bool enabled = false;
+        bool enabled = false; // Local output gate.
         feedback_t feedback = feedback_t();
         uint16_t ctrl_id = 0, feedback_id = 0;
 
         int16_t output = 0;
     private:
         param_t param {};
+        void clear_output();
+        bsp_status_t submit_mode(mode_e mode, bool have_feedback);
     };
 }

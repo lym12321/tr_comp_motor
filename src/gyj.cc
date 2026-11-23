@@ -45,7 +45,7 @@ static TaskHandle_t task_handle = nullptr;
 gyj::gyj(const char* name, const param_t& param, float ratio)
     : ratio(ratio), param(param)
 {
-    BSP_ASSERT(ratio > 0.f);
+    BSP_ASSERT(std::isfinite(ratio) && ratio > 0.f);
     BSP_ASSERT(0 <= param.port && param.port < BSP_CAN_DEVICE_COUNT);
     BSP_ASSERT(param.id < GYJ_MOTOR_LIMIT);
     std::snprintf(this->name, sizeof(this->name), "%s", name ? name : "");
@@ -59,26 +59,50 @@ gyj::gyj(const char* name, const param_t& param, float ratio)
 
 
 void gyj::update(float val) {
-    if (!enabled) return;
     if (!std::isfinite(val)) val = 0.0f;
     const auto next_output = static_cast<int16_t>(
         std::clamp(val, -32768.0f, 32767.0f));
     const uint8_t cid = id_trans(ctrl_id);
     const uint8_t mid = param.id < 4 ? param.id : param.id - 4;
     const unsigned long state = bsp_sys_enter_critical();
+    if (!enabled) {
+        bsp_sys_exit_critical(state);
+        return;
+    }
     output = next_output;
     can_tx_buf[param.port][cid][mid << 1]       = output >> 8;
     can_tx_buf[param.port][cid][(mid << 1) | 1] = output & 0xff;
     bsp_sys_exit_critical(state);
 }
 
-void gyj::clear() {
+void gyj::clear_output() {
     const uint8_t cid = id_trans(ctrl_id);
     const uint8_t mid = param.id < 4 ? param.id : param.id - 4;
-    const unsigned long state = bsp_sys_enter_critical();
     output = 0;
     can_tx_buf[param.port][cid][mid << 1]       = 0;
     can_tx_buf[param.port][cid][(mid << 1) | 1] = 0;
+}
+
+bsp_status_t gyj::enable() {
+    const unsigned long state = bsp_sys_enter_critical();
+    const auto status = submit_mode(param.mode, param.have_feedback);
+    if (status == BSP_STATUS_OK) enabled = param.mode != DISABLE;
+    bsp_sys_exit_critical(state);
+    return status;
+}
+
+bsp_status_t gyj::disable() {
+    const unsigned long state = bsp_sys_enter_critical();
+    enabled = false;
+    clear_output();
+    const auto status = submit_mode(DISABLE, false);
+    bsp_sys_exit_critical(state);
+    return status;
+}
+
+void gyj::clear() {
+    const unsigned long state = bsp_sys_enter_critical();
+    clear_output();
     feedback = feedback_t{};
     bsp_sys_exit_critical(state);
 }
@@ -93,25 +117,31 @@ gyj::feedback_t gyj::state() const {
 
 static uint8_t mode_data[BSP_CAN_DEVICE_COUNT][8];
 
-void gyj::set_mode(mode_e m, bool have_feedback, bool modified) {
-    if (modified) {
-        this->param.mode = m;
-        this->param.have_feedback = have_feedback;
-    }
-    uint8_t data[8];
+bsp_status_t gyj::set_mode(mode_e m, bool have_feedback, bool modified) {
     const unsigned long state = bsp_sys_enter_critical();
-    mode_data[this->param.port][this->param.id] =
-        ((have_feedback << 3) & 0x08) | (m & 0x07);
-    std::copy_n(mode_data[this->param.port], 8, data);
+    const auto status = submit_mode(m, have_feedback);
+    if (status == BSP_STATUS_OK && modified) {
+        param.mode = m;
+        param.have_feedback = have_feedback;
+    }
     bsp_sys_exit_critical(state);
-    bsp_can_send(this->param.port, 0x0a, data, 8);
+    return status;
+}
+
+bsp_status_t gyj::submit_mode(mode_e mode, bool have_feedback) {
+    auto& data = mode_data[param.port];
+    const uint8_t previous = data[param.id];
+    data[param.id] = (have_feedback << 3) | (mode & 0x07);
+    const auto status = bsp_can_send(param.port, 0x0a, data, sizeof(data));
+    if (status != BSP_STATUS_OK) data[param.id] = previous;
+    return status;
 }
 
 void gyj::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len) {
     if (!data || len != 8) return;
 
     gyj* p = registry.find_by_feedback_id(device, static_cast<uint16_t>(id));
-    if (!p || !p->enabled) return;
+    if (!p) return;
 
     // CAN 数据来自外设，错误 ID 只丢弃该帧，不能按程序不变量处理。
     if (data[0] >> 4 != p->param.id) return;
@@ -122,7 +152,7 @@ void gyj::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len
     next.raw.angle   = static_cast<int16_t>(data[5] << 8 | data[6]);
     next.raw.temp    = data[7];
 
-    // 暂时不知道原始数据是什么单位，先直接赋值
+    // 协议单位尚未定义，保持原始计数语义，避免伪造 rad/rad/s 单位。
     next.angle     = next.raw.angle;
     next.speed     = next.raw.speed;
     next.current   = next.raw.current;
@@ -134,7 +164,7 @@ void gyj::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len
 }
 
 
-void gyj::init() {
+bsp_status_t gyj::init() {
     logger::info("motor '%s' inited", name);
     if (!inited) {
         const BaseType_t ok = xTaskCreate(
@@ -144,7 +174,7 @@ void gyj::init() {
         inited = true;
     }
     BSP_ASSERT(bsp_can_set_callback(param.port, feedback_id, decoder) == BSP_STATUS_OK);
-    enable();
+    return enable();
 }
 
 

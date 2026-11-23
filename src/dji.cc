@@ -20,7 +20,6 @@ using namespace motor;
 #define TASK_STACK_SIZE 512
 
 void dji::update_round(uint16_t raw_angle) {
-    if (raw_angle >= encoder_resolution) return;
     if (feedback_received) {
         const int32_t delta = static_cast<int32_t>(raw_angle) - lst_angle;
         if (delta < -static_cast<int32_t>(encoder_resolution / 2))
@@ -204,7 +203,7 @@ void dji::enable() {
 void dji::disable() {
     const unsigned long state = bsp_sys_enter_critical();
     enabled = false;
-    clear();
+    clear_output();
     bsp_sys_exit_critical(state);
 }
 
@@ -212,13 +211,17 @@ void dji::disable() {
 //     ;
 // }
 
-void dji::clear() {
+void dji::clear_output() {
     const uint8_t cid = id_trans(ctrl_id);
     const uint8_t mid = param.id < 5 ? param.id : param.id - 4;
-    const unsigned long state = bsp_sys_enter_critical();
     output = 0;
     can_tx_buf[param.port][cid][(mid - 1) << 1]       = 0;
     can_tx_buf[param.port][cid][((mid - 1) << 1) | 1] = 0;
+}
+
+void dji::clear() {
+    const unsigned long state = bsp_sys_enter_critical();
+    clear_output();
     feedback = feedback_t{};
     lst_angle = 0;
     feedback_received = false;
@@ -257,7 +260,8 @@ void dji::decoder(bsp_can_e device, uint32_t id, const uint8_t* data, size_t len
     dji* p = registry.find_by_feedback_id(device, static_cast<uint16_t>(id));
     if (!p) return;
 
-    const uint16_t raw_angle = static_cast<uint16_t>(data[0] << 8 | data[1]);
+    const auto raw_angle = static_cast<uint16_t>(data[0] << 8 | data[1]);
+    if (raw_angle >= encoder_resolution) return;
 
     const unsigned long state = bsp_sys_enter_critical();
     auto& fb = p->feedback;
